@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard - Inventory Guy</title>
+  <link rel="stylesheet" href="../assets/css/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><div class="logo">◈</div><div><h1>Inventory Guy</h1><p>Smart Retail</p></div></div>
+      <nav class="nav">
+        <a class="active" href="./index.html"><span class="icon-mono">▦</span>Dashboard</a>
+        <a href="./inventory.html"><span class="icon-mono">▤</span>Inventory</a>
+        <a href="./demand-forecasting.html"><span class="icon-mono">◫</span>Demand Forecasting</a>
+        <a href="./restocking.html"><span class="icon-mono">◧</span>Restocking</a>
+        <a href="./alerts.html"><span class="icon-mono">◬</span>Alerts</a>
+        <a href="./reports.html"><span class="icon-mono">◪</span>Reports</a>
+        <a href="./settings.html"><span class="icon-mono">◩</span>Settings</a>
+      </nav>
+      <div class="user"><strong>Dewmi</strong><button class="btn logout-btn"><span class="icon-mono">◀</span> Logout</button></div>
+    </aside>
+    <main class="content">
+      <section class="title"><h2>Dashboard</h2><p>Welcome back! Here's your inventory overview.</p></section>
+      <section class="grid-4">
+        <div class="card"><h3>Total Products</h3><div id="dashboard-total-products" class="metric">0</div><div class="sub">Auto-synced from inventory</div></div>
+        <div class="card"><h3>Inventory Value</h3><div id="dashboard-inventory-value" class="metric">$0</div><div class="sub">Based on shared product data</div></div>
+        <div class="card"><h3>Low Stock Items</h3><div id="dashboard-low-stock" class="metric">0</div><div class="sub">Low + critical items</div></div>
+        <div class="card"><h3>Forecast Accuracy</h3><div id="dashboard-forecast-accuracy" class="metric">0%</div><div class="sub">Dynamic status signal</div></div>
+      </section>
+      <section class="grid-2">
+        <div class="card"><h3>Sales vs AI Forecast</h3><div class="chart"><canvas id="salesForecastChart"></canvas></div></div>
+        <div class="card"><h3>Top Products by Demand</h3><div id="dashboard-top-products" class="list"></div></div>
+      </section>
+      <section class="card"><h3>Recent Alerts</h3><div id="dashboard-recent-alerts" class="list"></div></section>
+    </main>
+  </div>
+  <script src="../assets/js/app-client.js"></script>
+</body>
+</html>

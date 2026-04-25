@@ -1,0 +1,29 @@
+{
+  "DemandData": [
+    {
+      "id": 1,
+      "product_id": "P-100",
+      "date": "2026-04-20",
+      "demand": 42,
+      "category": "electronics",
+      "created_at": "2026-04-24T19:34:01.723Z"
+    },
+    {
+      "id": 2,
+      "product_id": "P-100",
+      "date": "2026-04-21",
+      "demand": 50,
+      "category": "",
+      "created_at": "2026-04-24T19:34:03.752Z"
+    },
+    {
+      "id": 3,
+      "product_id": "P-100",
+      "date": "2026-04-22",
+      "demand": 56,
+      "category": "",
+      "created_at": "2026-04-24T19:34:03.752Z"
+    }
+  ],
+  "nextId": 4
+}

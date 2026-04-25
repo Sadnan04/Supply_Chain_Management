@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Demand Forecasting</title>
+  <link rel="stylesheet" href="../assets/css/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><div class="logo">◈</div><div><h1>Inventory Guy</h1><p>Smart Retail</p></div></div>
+      <nav class="nav">
+        <a href="./index.html"><span class="icon-mono">▦</span>Dashboard</a>
+        <a href="./inventory.html"><span class="icon-mono">▤</span>Inventory</a>
+        <a class="active" href="./demand-forecasting.html"><span class="icon-mono">◫</span>Demand Forecasting</a>
+        <a href="./restocking.html"><span class="icon-mono">◧</span>Restocking</a>
+        <a href="./alerts.html"><span class="icon-mono">◬</span>Alerts</a>
+        <a href="./reports.html"><span class="icon-mono">◪</span>Reports</a>
+        <a href="./settings.html"><span class="icon-mono">◩</span>Settings</a>
+      </nav>
+      <div class="user"><strong>Dewmi</strong><button class="btn logout-btn"><span class="icon-mono">◀</span> Logout</button></div>
+    </aside>
+    <main class="content">
+      <section class="title">
+        <h2>Demand Forecasting Dashboard</h2>
+        <p>Upload or enter demand data to generate predictions</p>
+      </section>
+
+      <section class="grid-2">
+        <div class="card">
+          <h3>Manual Data Entry</h3>
+          <form id="manual-demand-form" class="form-grid">
+            <input id="demand-product-id" class="input" type="text" placeholder="Product ID" required />
+            <input id="demand-date" class="input" type="date" required />
+            <input id="demand-quantity" class="input" type="number" placeholder="Demand Quantity" min="0" required />
+            <input id="demand-category" class="input" type="text" placeholder="Category (optional)" />
+            <button class="btn btn-dark" type="submit">Submit Demand</button>
+          </form>
+          <p id="manual-demand-message" class="sub"></p>
+        </div>
+
+        <div class="card">
+          <h3>CSV Upload</h3>
+          <p class="sub">CSV must include: date, product_id, demand</p>
+          <div class="form-grid">
+            <input id="demand-csv-file" class="input" type="file" accept=".csv" />
+            <button id="upload-csv-btn" class="btn" type="button">Upload CSV</button>
+          </div>
+          <p id="csv-upload-message" class="sub"></p>
+        </div>
+      </section>
+
+      <section class="card">
+        <h3>Data Preview Table</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>ID</th><th>Product ID</th><th>Date</th><th>Demand</th><th>Category</th><th>Created At</th></tr>
+            </thead>
+            <tbody id="demand-preview-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="grid-2">
+        <div class="card">
+          <h3>Forecast Controls</h3>
+          <div class="form-grid">
+            <select id="forecast-product" class="input"></select>
+            <input id="forecast-start-date" class="input" type="date" />
+            <input id="forecast-end-date" class="input" type="date" />
+            <button id="generate-forecast-btn" class="btn btn-dark" type="button">Generate Forecast</button>
+          </div>
+          <p id="forecast-message" class="sub"></p>
+        </div>
+
+        <div class="card">
+          <h3>Forecast Results</h3>
+          <div class="chart"><canvas id="forecast-result-chart"></canvas></div>
+          <div id="forecast-values" class="forecast-values"></div>
+          <h3>Comparison Result</h3>
+          <div class="chart"><canvas id="forecast-comparison-chart"></canvas></div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="../assets/js/app-client.js"></script>
+</body>
+</html>
