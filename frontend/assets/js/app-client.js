@@ -6,22 +6,28 @@ const PROFILE_KEY = "inventory_profile";
 const PREFERENCES_KEY = "inventory_preferences";
 const DEMAND_KEY = "inventory_demand_rows";
 const DEMAND_SEQ_KEY = "inventory_demand_seq";
+const SUPPLIERS_KEY = "inventory_suppliers";
+const ONBOARDING_KEY = "inventory_onboarding";
+
+const APP_CHANNEL = "inventoryguy_ui_sync_v1";
 
 const defaultProducts = [
-  { name: "Wireless Headphones", sku: "WH-001", category: "Electronics", stock: 45, status: "healthy", price: 129.99 },
-  { name: "Smart Watch", sku: "SW-002", category: "Electronics", stock: 12, status: "low", price: 199.99 },
-  { name: "USB-C Cable", sku: "UC-003", category: "Accessories", stock: 150, status: "overstock", price: 19.99 },
-  { name: "Laptop Stand", sku: "LS-004", category: "Accessories", stock: 8, status: "critical", price: 49.99 },
+  { name: "Wireless Headphones", sku: "WH-001", category: "Electronics", stock: 45, minStock: 20, maxStock: 100, price: 129.99 },
+  { name: "Smart Watch", sku: "SW-002", category: "Electronics", stock: 12, minStock: 15, maxStock: 50, price: 199.99 },
+  { name: "USB-C Cable", sku: "UC-003", category: "Accessories", stock: 150, minStock: 30, maxStock: 80, price: 19.99 },
+  { name: "Laptop Stand", sku: "LS-004", category: "Accessories", stock: 0, minStock: 10, maxStock: 40, price: 49.99 },
 ];
 const defaultRestock = [
-  { product: "Laptop Stand", currentMin: "8/10", predicted: 35, recommended: 50, cost: 2499 },
-  { product: "Smart Watch", currentMin: "12/15", predicted: 45, recommended: 60, cost: 11999 },
+  { product: "LS-004", currentMin: "0/10", predicted: 35, recommended: 50, cost: 2499 },
+  { product: "SW-002", currentMin: "12/15", predicted: 45, recommended: 60, cost: 11999 },
 ];
 const defaultAlerts = [
-  { title: "Laptop Stand", message: "Critical stock level - 8 units remaining", severity: "critical" },
+  { title: "Laptop Stand", message: "Stockout detected - 0 units remaining", severity: "critical" },
   { title: "Smart Watch", message: "Low stock alert - 12 units in inventory", severity: "warning" },
   { title: "USB-C Cable", message: "Overstock situation - 150 units available", severity: "info" },
 ];
+const defaultSuppliers = [];
+const defaultOnboarding = { inventoryUploaded: false, suppliersLinked: false, firstForecastGenerated: false };
 const defaultProfile = {
   fullName: "Dewmi",
   email: "inventoryguy@gmail.com",
@@ -59,6 +65,37 @@ function setStore(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+// Cross-page instant sync (no refresh)
+let _channel = null;
+try {
+  _channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel(APP_CHANNEL) : null;
+} catch {
+  _channel = null;
+}
+function broadcastSync(key) {
+  if (!_channel) return;
+  try {
+    _channel.postMessage({ key, ts: Date.now() });
+  } catch {
+    // ignore
+  }
+}
+
+function writeStore(key, value) {
+  setStore(key, value);
+  broadcastSync(key);
+}
+if (_channel) {
+  _channel.addEventListener("message", () => {
+    // Re-render from localStorage state
+    renderAllSharedData?.();
+    initInventoryCrud?.();
+    initRestockCrud?.();
+    initDemandForecastingPage?.();
+    initSuppliers?.();
+  });
+}
+
 function ensureStoreDefaults() {
   if (!localStorage.getItem(PRODUCTS_KEY)) setStore(PRODUCTS_KEY, defaultProducts);
   if (!localStorage.getItem(RESTOCK_KEY)) setStore(RESTOCK_KEY, defaultRestock);
@@ -67,6 +104,8 @@ function ensureStoreDefaults() {
   if (!localStorage.getItem(PREFERENCES_KEY)) setStore(PREFERENCES_KEY, defaultPreferences);
   if (!localStorage.getItem(DEMAND_KEY)) setStore(DEMAND_KEY, defaultDemandRows);
   if (!localStorage.getItem(DEMAND_SEQ_KEY)) localStorage.setItem(DEMAND_SEQ_KEY, "9");
+  if (!localStorage.getItem(SUPPLIERS_KEY)) setStore(SUPPLIERS_KEY, defaultSuppliers);
+  if (!localStorage.getItem(ONBOARDING_KEY)) setStore(ONBOARDING_KEY, defaultOnboarding);
 }
 
 function getProducts() {
@@ -94,7 +133,7 @@ function getDemandRows() {
 }
 
 function setDemandRows(rows) {
-  setStore(DEMAND_KEY, rows);
+  writeStore(DEMAND_KEY, rows);
 }
 
 function nextDemandId() {
@@ -183,9 +222,10 @@ function parseCsvText(csvText) {
 }
 
 function calculateProductStatus(stock) {
-  if (stock <= 10) return "critical";
-  if (stock <= 20) return "low";
-  if (stock >= 100) return "overstock";
+  const s = Number(stock ?? 0);
+  if (s <= 0) return "stockout";
+  if (s <= 10) return "low";
+  if (s >= 100) return "overstock";
   return "healthy";
 }
 
@@ -216,7 +256,15 @@ function setupAuth() {
 }
 
 function badge(status) {
-  return `<span class="pill">${status}</span>`;
+  const s = String(status || "").toLowerCase();
+  const cls =
+    s === "stockout" ? "pill pill-stockout" :
+    s === "critical" ? "pill pill-critical" :
+    s === "low" ? "pill pill-low" :
+    s === "healthy" ? "pill pill-healthy" :
+    s === "overstock" ? "pill pill-overstock" :
+    "pill";
+  return `<span class="${cls}">${s || "-"}</span>`;
 }
 
 function setText(id, value) {
@@ -235,11 +283,43 @@ function renderSharedHeader() {
   });
 }
 
+function getOnboarding() {
+  return getStore(ONBOARDING_KEY, defaultOnboarding);
+}
+function setOnboarding(next) {
+  writeStore(ONBOARDING_KEY, next);
+}
+function syncOnboardingFromState() {
+  const products = getProducts();
+  const suppliers = getStore(SUPPLIERS_KEY, defaultSuppliers);
+  const current = getOnboarding();
+  const next = {
+    ...current,
+    inventoryUploaded: products.length > 0,
+    suppliersLinked: suppliers.length > 0,
+  };
+  setStore(ONBOARDING_KEY, next);
+}
+function renderOnboarding() {
+  const card = document.getElementById("onboarding-card");
+  if (!card) return;
+  syncOnboardingFromState();
+  const ob = getOnboarding();
+  const done = [ob.inventoryUploaded, ob.suppliersLinked, ob.firstForecastGenerated].filter(Boolean).length;
+  const caption = document.getElementById("onboarding-caption");
+  if (caption) caption.textContent = `${done}/3 completed`;
+  const bar = document.getElementById("onboarding-bar");
+  if (bar) bar.style.width = `${Math.round((done / 3) * 100)}%`;
+  document.getElementById("step-inventory")?.classList.toggle("done", !!ob.inventoryUploaded);
+  document.getElementById("step-suppliers")?.classList.toggle("done", !!ob.suppliersLinked);
+  document.getElementById("step-forecast")?.classList.toggle("done", !!ob.firstForecastGenerated);
+}
+
 function renderDashboardCards() {
   const products = getProducts();
   const alerts = getAlerts();
   const totalProducts = products.length;
-  const lowStock = products.filter((p) => ["low", "critical"].includes(p.status)).length;
+  const lowStock = products.filter((p) => ["low", "stockout"].includes(calculateProductStatus(p.stock))).length;
   const inventoryValue = products.reduce((sum, p) => sum + Number(p.price || 0) * Number(p.stock || 0), 0);
   const topProducts = [...products].sort((a, b) => Number(b.stock) - Number(a.stock)).slice(0, 5);
 
@@ -253,7 +333,7 @@ function renderDashboardCards() {
     topList.innerHTML = topProducts
       .map(
         (p) =>
-          `<div class="row"><span>${p.name}</span><span class="pill">${p.status}</span></div>`,
+          `<div class="row"><span>${p.name}</span>${badge(calculateProductStatus(p.stock))}</div>`,
       )
       .join("");
   }
@@ -264,74 +344,481 @@ function renderDashboardCards() {
       .slice(0, 3)
       .map(
         (a) =>
-          `<div class="status-panel bg-blue"><div class="row"><strong>${a.title} - ${a.message}</strong><span class="pill">${a.severity}</span></div></div>`,
+          `<div class="status-panel bg-blue"><div class="row"><strong>${a.title} - ${a.message}</strong>${badge(a.severity)}</div></div>`,
+      )
+      .join("");
+  }
+
+  const criticalWrap = document.getElementById("dashboard-critical-actions");
+  if (criticalWrap) {
+    const stockouts = products.filter((p) => calculateProductStatus(p.stock) === "stockout");
+    const lows = products.filter((p) => calculateProductStatus(p.stock) === "low");
+    const recs = getRestocks();
+    const actions = [];
+    if (stockouts.length) actions.push({ title: `${stockouts.length} items need restocking today`, detail: "Stockouts detected", pill: "stockout", href: "./inventory.html" });
+    if (lows.length) actions.push({ title: `${lows.length} items are below minimum`, detail: "Review low-stock list", pill: "low", href: "./inventory.html" });
+    if (recs.length) actions.push({ title: `${recs.length} recommendations ready`, detail: "Create orders in Restocking", pill: "info", href: "./restocking.html" });
+    if (!actions.length) actions.push({ title: "No critical actions right now", detail: "Inventory looks healthy", pill: "healthy", href: "./reports.html" });
+
+    criticalWrap.innerHTML = actions
+      .slice(0, 4)
+      .map(
+        (a) =>
+          `<div class="item"><div class="row"><div class="col"><strong>${a.title}</strong><span class="tiny">${a.detail}</span></div>${badge(a.pill)}</div><div class="row" style="margin-top:10px"><a class="btn btn-dark" href="${a.href}">Take action</a><span class="hint">Live synced</span></div></div>`,
       )
       .join("");
   }
 }
 
+function initDashboardInteractions() {
+  const modal = document.getElementById("dashboard-modal");
+  if (!modal) return;
+  if (modal.dataset.bound === "true") return;
+  modal.dataset.bound = "true";
+
+  const close = () => closeModal("dashboard-modal");
+  document.getElementById("dash-modal-close")?.addEventListener("click", close);
+  document.getElementById("dash-modal-ok")?.addEventListener("click", close);
+
+  const openDetails = (type) => {
+    const products = getProducts();
+    const alerts = getAlerts();
+    const title = document.getElementById("dash-modal-title");
+    const body = document.getElementById("dash-modal-body");
+    if (!title || !body) return;
+
+    if (type === "products") {
+      title.textContent = "Products (live)";
+      body.innerHTML = products
+        .slice(0, 20)
+        .map((p) => `<div class="item"><div class="row"><strong>${p.name}</strong>${badge(calculateProductStatus(p.stock))}</div><div class="sub">${p.sku} • Stock ${p.stock} • Min ${p.minStock ?? 10}</div><div class="row" style="margin-top:8px"><a class="btn" href="./inventory.html">Manage</a></div></div>`)
+        .join("");
+    } else if (type === "value") {
+      title.textContent = "Inventory Value (breakdown)";
+      const sorted = [...products].sort((a, b) => (Number(b.price) * Number(b.stock)) - (Number(a.price) * Number(a.stock))).slice(0, 20);
+      body.innerHTML = sorted
+        .map((p) => {
+          const v = Number(p.price || 0) * Number(p.stock || 0);
+          return `<div class="item"><div class="row"><strong>${p.name}</strong><span class="pill">${formatMoney(v)}</span></div><div class="sub">${p.sku} • ${p.stock} × ${formatMoney(p.price)}</div></div>`;
+        })
+        .join("");
+    } else if (type === "lowstock") {
+      title.textContent = "Low stock / Stockouts";
+      const lows = products.filter((p) => ["low", "stockout"].includes(calculateProductStatus(p.stock)));
+      body.innerHTML = (lows.length ? lows : [{ name: "No low stock items", sku: "-", stock: "-", minStock: "-" }])
+        .map((p) => `<div class="item"><div class="row"><strong>${p.name}</strong>${badge(calculateProductStatus(p.stock))}</div><div class="sub">${p.sku} • Stock ${p.stock} • Min ${p.minStock ?? 10}</div><div class="row" style="margin-top:8px"><a class="btn btn-dark" href="./restocking.html">Restock</a></div></div>`)
+        .join("");
+    } else if (type === "forecast") {
+      title.textContent = "Forecast readiness";
+      body.innerHTML = `<div class="item"><div class="row"><strong>Forecast pipeline</strong><span class="pill">connected</span></div><div class="sub">Generate forecasts from Demand Forecasting page to improve recommendations.</div><div class="row" style="margin-top:8px"><a class="btn btn-dark" href="./demand-forecasting.html">Open Forecasting</a></div></div>`;
+    } else {
+      title.textContent = "Details";
+      body.innerHTML = `<div class="item">No details available.</div>`;
+    }
+
+    openModal("dashboard-modal");
+  };
+
+  document.querySelectorAll("[data-card]").forEach((el) => {
+    el.addEventListener("click", () => openDetails(el.getAttribute("data-card")));
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") openDetails(el.getAttribute("data-card"));
+    });
+  });
+}
+
 function renderInventoryMetrics(products) {
-  const healthy = products.filter((p) => p.status === "healthy").length;
-  const low = products.filter((p) => p.status === "low").length;
-  const critical = products.filter((p) => p.status === "critical").length;
+  const statuses = products.map((p) => calculateProductStatus(p.stock));
+  const healthy = statuses.filter((s) => s === "healthy").length;
+  const low = statuses.filter((s) => s === "low").length;
+  const stockout = statuses.filter((s) => s === "stockout").length;
   const total = products.length || 0;
   setText("metric-total-products", `${total}/${total}`);
   setText("metric-healthy-stock", `${healthy}/${total}`);
   setText("metric-low-stock", `${low}/${total}`);
-  setText("metric-critical-stock", `${critical}/${total}`);
+  setText("metric-critical-stock", `${stockout}/${total}`);
+}
+
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.add("open");
+  el.setAttribute("aria-hidden", "false");
+}
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.remove("open");
+  el.setAttribute("aria-hidden", "true");
 }
 
 function initInventoryCrud() {
   const body = document.getElementById("inventory-body");
   if (!body) return;
+
   const render = () => {
     const products = getProducts();
     body.innerHTML = products
       .map(
         (p, i) =>
-          `<tr><td>${p.name}</td><td>${p.sku}</td><td>${p.category}</td><td>${p.stock}</td><td>${badge(p.status)}</td><td class="actions-cell"><button class="mini-btn" data-edit="${i}">✎ Edit</button><button class="mini-btn danger" data-del="${i}">✕ Delete</button></td></tr>`,
+          `<tr>
+            <td>${p.name}</td>
+            <td>${p.sku}</td>
+            <td>${p.category || "-"}</td>
+            <td>${Number(p.stock ?? 0)}</td>
+            <td>${Number(p.minStock ?? 10)}</td>
+            <td>${formatMoney(p.price)}</td>
+            <td>${badge(calculateProductStatus(p.stock))}</td>
+            <td class="actions-cell"><button class="mini-btn" data-edit="${i}">✎ Edit</button><button class="mini-btn danger" data-del="${i}">✕ Delete</button></td>
+          </tr>`,
       )
       .join("");
     renderInventoryMetrics(products);
   };
-  document.getElementById("add-product-btn")?.addEventListener("click", () => {
-    const name = prompt("Product name:");
-    if (!name) return;
-    const stock = Number(prompt("Stock:", "0") || 0);
-    const next = [
-      ...getProducts(),
-      {
-        name,
-        sku: prompt("SKU:", "NEW-001") || "NEW-001",
-        category: prompt("Category:", "General") || "General",
-        stock,
-        status: calculateProductStatus(stock),
-        price: Number(prompt("Unit price:", "0") || 0),
-      },
-    ];
-    setStore(PRODUCTS_KEY, next);
-    renderAllSharedData();
+
+  if (body.dataset.bound === "true") {
+    render();
+    return;
+  }
+  body.dataset.bound = "true";
+
+  const modalId = "product-modal";
+  const openBtn = document.getElementById("open-add-product");
+  const closeBtn = document.getElementById("product-modal-close");
+  const cancelBtn = document.getElementById("product-cancel");
+  const saveBtn = document.getElementById("product-save");
+  const form = document.getElementById("product-form");
+
+  let editingIndex = null;
+
+  function setErr(id, msg) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = msg || "";
+  }
+  function setInvalid(inputId, invalid) {
+    const input = document.getElementById(inputId);
+    if (input) input.classList.toggle("invalid", !!invalid);
+  }
+  function readForm() {
+    return {
+      name: String(document.getElementById("p-name")?.value || "").trim(),
+      sku: String(document.getElementById("p-sku")?.value || "").trim().toUpperCase(),
+      category: String(document.getElementById("p-category")?.value || "").trim(),
+      stock: Number(document.getElementById("p-stock")?.value || 0),
+      minStock: Number(document.getElementById("p-min")?.value || 10),
+      price: Number(document.getElementById("p-price")?.value || 0),
+    };
+  }
+  function validate(value) {
+    const products = getProducts();
+    const skuTaken = products.some((p, idx) => p.sku === value.sku && idx !== editingIndex);
+    let ok = true;
+
+    if (!value.name || value.name.length < 2) {
+      setErr("p-name-err", "Name is required (min 2 chars).");
+      setInvalid("p-name", true);
+      ok = false;
+    } else {
+      setErr("p-name-err", "");
+      setInvalid("p-name", false);
+    }
+
+    if (!value.sku || value.sku.length < 2) {
+      setErr("p-sku-err", "SKU is required (min 2 chars).");
+      setInvalid("p-sku", true);
+      ok = false;
+    } else if (skuTaken) {
+      setErr("p-sku-err", "SKU must be unique.");
+      setInvalid("p-sku", true);
+      ok = false;
+    } else {
+      setErr("p-sku-err", "");
+      setInvalid("p-sku", false);
+    }
+
+    if (!Number.isFinite(value.stock) || value.stock < 0) {
+      setErr("p-stock-err", "Stock must be a number ≥ 0.");
+      setInvalid("p-stock", true);
+      ok = false;
+    } else {
+      setErr("p-stock-err", "");
+      setInvalid("p-stock", false);
+    }
+
+    if (!Number.isFinite(value.minStock) || value.minStock < 0) {
+      setErr("p-min-err", "Min stock must be a number ≥ 0.");
+      setInvalid("p-min", true);
+      ok = false;
+    } else {
+      setErr("p-min-err", "");
+      setInvalid("p-min", false);
+    }
+
+    const preview = document.getElementById("p-status-preview");
+    if (preview) preview.innerHTML = badge(calculateProductStatus(value.stock));
+
+    return ok;
+  }
+
+  openBtn?.addEventListener("click", () => {
+    editingIndex = null;
+    document.getElementById("product-modal-title").textContent = "Add Product";
+    form?.reset();
+    ["p-name-err", "p-sku-err", "p-stock-err", "p-min-err"].forEach((id) => setErr(id, ""));
+    ["p-name", "p-sku", "p-stock", "p-min"].forEach((id) => setInvalid(id, false));
+    openModal(modalId);
+    validate(readForm());
   });
+  closeBtn?.addEventListener("click", () => closeModal(modalId));
+  cancelBtn?.addEventListener("click", () => closeModal(modalId));
+  form?.addEventListener("input", () => validate(readForm()));
+
+  saveBtn?.addEventListener("click", () => {
+    const value = readForm();
+    const msg = document.getElementById("product-form-msg");
+    if (!validate(value)) {
+      if (msg) msg.textContent = "Fix validation errors to save.";
+      return;
+    }
+    const products = getProducts();
+    const next = { ...value, maxStock: Math.max(Number(value.minStock ?? 10) + 1, 100) };
+    if (editingIndex === null) products.unshift(next);
+    else products[editingIndex] = { ...products[editingIndex], ...next };
+    writeStore(PRODUCTS_KEY, products);
+    if (msg) msg.textContent = "Saved and synced across modules.";
+    closeModal(modalId);
+    renderAllSharedData();
+    render();
+  });
+
   body.addEventListener("click", (e) => {
     const t = e.target;
     if (!(t instanceof HTMLElement)) return;
     if (t.dataset.edit !== undefined) {
       const i = Number(t.dataset.edit);
       const products = getProducts();
-      const name = prompt("Product name:", products[i].name);
-      if (!name) return;
-      const stock = Number(prompt("Stock:", String(products[i].stock)) || products[i].stock);
-      products[i] = { ...products[i], name, stock, status: calculateProductStatus(stock) };
-      setStore(PRODUCTS_KEY, products);
-      renderAllSharedData();
+      const p = products[i];
+      if (!p) return;
+      editingIndex = i;
+      document.getElementById("product-modal-title").textContent = "Edit Product";
+      document.getElementById("p-name").value = p.name || "";
+      document.getElementById("p-sku").value = p.sku || "";
+      document.getElementById("p-category").value = p.category || "";
+      document.getElementById("p-stock").value = String(Number(p.stock ?? 0));
+      document.getElementById("p-min").value = String(Number(p.minStock ?? 10));
+      document.getElementById("p-price").value = String(Number(p.price ?? 0));
+      openModal(modalId);
+      validate(readForm());
     }
     if (t.dataset.del !== undefined) {
       const products = getProducts();
       products.splice(Number(t.dataset.del), 1);
-      setStore(PRODUCTS_KEY, products);
+      writeStore(PRODUCTS_KEY, products);
       renderAllSharedData();
+      render();
     }
   });
+
+  // Export button (new UI)
+  document.getElementById("export-products-btn")?.addEventListener("click", () => {
+    const products = getProducts();
+    const headers = ["name", "sku", "category", "stock", "minStock", "price"];
+    const rows = products.map((p) =>
+      [p.name, p.sku, p.category || "", p.stock, p.minStock ?? 10, p.price ?? 0]
+        .map((x) => `"${String(x ?? "").replace(/"/g, '""')}"`)
+        .join(","),
+    );
+    const csv = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "inventory-products.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // CSV drag & drop + mapping (Inventory import)
+  const dropzone = document.getElementById("inventory-dropzone");
+  const csvInput = document.getElementById("inventory-csv-file");
+  const csvStart = document.getElementById("inventory-csv-start");
+  const csvMsg = document.getElementById("inventory-csv-msg");
+
+  let pendingImport = null; // { headers: string[], rows: string[][] }
+
+  const splitCsvLine = (line) => {
+    const out = [];
+    let cur = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+        continue;
+      }
+      if (ch === "," && !inQuotes) {
+        out.push(cur);
+        cur = "";
+        continue;
+      }
+      cur += ch;
+    }
+    out.push(cur);
+    return out.map((s) => String(s).trim());
+  };
+
+  function parseInventoryCsv(text) {
+    const cleaned = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+    if (!cleaned) return { headers: [], rows: [] };
+    const lines = cleaned.split("\n").filter(Boolean);
+    const headers = splitCsvLine(lines[0]);
+    const rows = lines.slice(1).map(splitCsvLine).filter((r) => r.some((c) => String(c || "").trim() !== ""));
+    return { headers, rows };
+  }
+
+  function openMapping(csv) {
+    pendingImport = csv;
+    const list = document.getElementById("mapping-list");
+    const err = document.getElementById("mapping-err");
+    if (err) err.textContent = "";
+    if (!list) return;
+
+    const fields = [
+      { key: "name", label: "Product name", required: true },
+      { key: "sku", label: "SKU / Product ID", required: true },
+      { key: "category", label: "Category", required: false },
+      { key: "stock", label: "Stock", required: true },
+      { key: "minStock", label: "Min stock", required: false },
+      { key: "price", label: "Unit price", required: false },
+    ];
+    const options = [`<option value="">— Select header —</option>`]
+      .concat(csv.headers.map((h, i) => `<option value="${i}">${h}</option>`))
+      .join("");
+    list.innerHTML = fields
+      .map(
+        (f) =>
+          `<div class="map-row">
+            <div class="input-row"><label>${f.label}${f.required ? " *" : ""}</label><div class="hint">System field: <strong>${f.key}</strong></div></div>
+            <div class="input-row"><label>CSV header</label><select class="select" data-map="${f.key}">${options}</select></div>
+          </div>`,
+      )
+      .join("");
+
+    // auto map
+    const lower = csv.headers.map((h) => String(h).toLowerCase().replace(/\s+/g, "_"));
+    const autoPick = (key, candidates) => {
+      const idx = lower.findIndex((h) => candidates.includes(h));
+      if (idx === -1) return;
+      const sel = list.querySelector(`select[data-map="${key}"]`);
+      if (sel) sel.value = String(idx);
+    };
+    autoPick("name", ["name", "product_name", "product"]);
+    autoPick("sku", ["sku", "product_id", "id", "productid"]);
+    autoPick("category", ["category", "type"]);
+    autoPick("stock", ["stock", "qty", "quantity", "on_hand", "onhand"]);
+    autoPick("minStock", ["min", "min_stock", "reorder_point", "reorderpoint"]);
+    autoPick("price", ["price", "unit_price", "unitprice", "cost"]);
+
+    const head = document.getElementById("mapping-preview-head");
+    const body = document.getElementById("mapping-preview-body");
+    if (head) head.innerHTML = `<tr>${csv.headers.slice(0, 8).map((h) => `<th>${h}</th>`).join("")}</tr>`;
+    if (body) {
+      body.innerHTML = csv.rows
+        .slice(0, 5)
+        .map((r) => `<tr>${r.slice(0, 8).map((c) => `<td>${String(c || "").slice(0, 40)}</td>`).join("")}</tr>`)
+        .join("");
+    }
+
+    openModal("mapping-modal");
+  }
+
+  async function startMappingFromFile(file) {
+    const text = await file.text();
+    const parsed = parseInventoryCsv(text);
+    if (!parsed.headers.length || !parsed.rows.length) {
+      if (csvMsg) csvMsg.textContent = "CSV looks empty. Provide headers + rows.";
+      return;
+    }
+    if (csvMsg) csvMsg.textContent = "";
+    openMapping(parsed);
+  }
+
+  csvStart?.addEventListener("click", async () => {
+    if (!(csvInput instanceof HTMLInputElement) || !csvInput.files || csvInput.files.length === 0) {
+      if (csvMsg) csvMsg.textContent = "Choose a CSV file first (or drag & drop one).";
+      return;
+    }
+    await startMappingFromFile(csvInput.files[0]);
+  });
+
+  dropzone?.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropzone.classList.add("dragover");
+  });
+  dropzone?.addEventListener("dragleave", () => dropzone.classList.remove("dragover"));
+  dropzone?.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    dropzone.classList.remove("dragover");
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+    await startMappingFromFile(file);
+  });
+
+  document.getElementById("mapping-close")?.addEventListener("click", () => closeModal("mapping-modal"));
+  document.getElementById("mapping-cancel")?.addEventListener("click", () => closeModal("mapping-modal"));
+  document.getElementById("mapping-import")?.addEventListener("click", () => {
+    const list = document.getElementById("mapping-list");
+    const err = document.getElementById("mapping-err");
+    if (!pendingImport || !list) return;
+    const mapping = {};
+    list.querySelectorAll("select[data-map]").forEach((sel) => {
+      const key = sel.getAttribute("data-map");
+      mapping[key] = sel.value === "" ? null : Number(sel.value);
+    });
+    const missing = ["name", "sku", "stock"].filter((k) => mapping[k] === null);
+    if (missing.length) {
+      if (err) err.textContent = `Missing required mappings: ${missing.join(", ")}`;
+      return;
+    }
+
+    const products = getProducts();
+    let upserts = 0;
+    for (const row of pendingImport.rows) {
+      const name = String(row[mapping.name] ?? "").trim();
+      const sku = String(row[mapping.sku] ?? "").trim().toUpperCase();
+      const stock = Number(row[mapping.stock] ?? 0);
+      if (!name || !sku || !Number.isFinite(stock)) continue;
+      const category = mapping.category === null ? "" : String(row[mapping.category] ?? "").trim();
+      const minStock = mapping.minStock === null ? 10 : Number(row[mapping.minStock] ?? 10);
+      const price = mapping.price === null ? 0 : Number(row[mapping.price] ?? 0);
+      const next = {
+        name,
+        sku,
+        category,
+        stock: Math.max(0, Number.isFinite(stock) ? stock : 0),
+        minStock: Number.isFinite(minStock) ? Math.max(0, minStock) : 10,
+        maxStock: 100,
+        price: Number.isFinite(price) ? Math.max(0, price) : 0,
+      };
+      const idx = products.findIndex((p) => p.sku === sku);
+      if (idx === -1) products.unshift(next);
+      else products[idx] = { ...products[idx], ...next };
+      upserts++;
+    }
+
+    writeStore(PRODUCTS_KEY, products);
+    setOnboarding({ ...getOnboarding(), inventoryUploaded: true });
+    closeModal("mapping-modal");
+    renderAllSharedData();
+    render();
+    if (csvMsg) csvMsg.textContent = `Imported ${upserts} row(s) (upserted by SKU).`;
+  });
+
   render();
 }
 
@@ -362,19 +849,64 @@ function initRestockCrud() {
       .join("");
     renderRestockMetrics(rows);
   };
-  document.getElementById("add-restock-btn")?.addEventListener("click", () => {
-    const product = prompt("Product:");
-    if (!product) return;
+
+  if (body.dataset.bound === "true") {
+    render();
+    return;
+  }
+  body.dataset.bound = "true";
+  const openBtn = document.getElementById("add-restock-btn");
+  const closeBtn = document.getElementById("restock-modal-close");
+  const cancelBtn = document.getElementById("restock-cancel");
+  const saveBtn = document.getElementById("restock-save");
+
+  function populateRestockProducts() {
+    const sel = document.getElementById("restock-product");
+    if (!sel) return;
+    const products = getProducts();
+    sel.innerHTML = products.map((p) => `<option value="${p.sku}">${p.sku} — ${p.name}</option>`).join("");
+  }
+  populateRestockProducts();
+
+  openBtn?.addEventListener("click", () => {
+    populateRestockProducts();
+    document.getElementById("restock-current-min").value = "0/10";
+    document.getElementById("restock-predicted").value = "0";
+    document.getElementById("restock-recommended").value = "0";
+    document.getElementById("restock-cost").value = "0";
+    const err = document.getElementById("restock-modal-err");
+    if (err) err.textContent = "";
+    openModal("restock-modal");
+  });
+  closeBtn?.addEventListener("click", () => closeModal("restock-modal"));
+  cancelBtn?.addEventListener("click", () => closeModal("restock-modal"));
+  saveBtn?.addEventListener("click", () => {
+    const product = String(document.getElementById("restock-product")?.value || "").trim();
+    const currentMin = String(document.getElementById("restock-current-min")?.value || "").trim();
+    const predicted = Number(document.getElementById("restock-predicted")?.value || 0);
+    const recommended = Number(document.getElementById("restock-recommended")?.value || 0);
+    const cost = Number(document.getElementById("restock-cost")?.value || 0);
+    const err = document.getElementById("restock-modal-err");
+    if (!product) {
+      if (err) err.textContent = "Pick a product first.";
+      return;
+    }
+    if (!Number.isFinite(recommended) || recommended < 0) {
+      if (err) err.textContent = "Recommended must be a number ≥ 0.";
+      return;
+    }
     const rows = getRestocks();
-    rows.push({
+    rows.unshift({
       product,
-      currentMin: prompt("Current/Min:", "0/10") || "0/10",
-      predicted: Number(prompt("Predicted:", "0") || 0),
-      recommended: Number(prompt("Recommended:", "0") || 0),
-      cost: Number(prompt("Cost:", "0") || 0),
+      currentMin: currentMin || "0/10",
+      predicted: Number.isFinite(predicted) ? predicted : 0,
+      recommended,
+      cost: Number.isFinite(cost) ? cost : 0,
     });
-    setStore(RESTOCK_KEY, rows);
+    writeStore(RESTOCK_KEY, rows);
+    closeModal("restock-modal");
     renderAllSharedData();
+    render();
   });
   body.addEventListener("click", (e) => {
     const t = e.target;
@@ -383,13 +915,13 @@ function initRestockCrud() {
       const rows = getRestocks();
       const i = Number(t.dataset.edit);
       rows[i].recommended = Number(prompt("Recommended:", String(rows[i].recommended)) || rows[i].recommended);
-      setStore(RESTOCK_KEY, rows);
+      writeStore(RESTOCK_KEY, rows);
       renderAllSharedData();
     }
     if (t.dataset.del !== undefined) {
       const rows = getRestocks();
       rows.splice(Number(t.dataset.del), 1);
-      setStore(RESTOCK_KEY, rows);
+      writeStore(RESTOCK_KEY, rows);
       renderAllSharedData();
     }
   });
@@ -416,6 +948,12 @@ function initAlertsCrud() {
       .join("");
     renderAlertMetrics(alerts);
   };
+  if (list.dataset.bound === "true") {
+    render();
+    return;
+  }
+  list.dataset.bound = "true";
+
   document.getElementById("add-alert-btn")?.addEventListener("click", () => {
     const title = prompt("Alert title:");
     if (!title) return;
@@ -425,7 +963,7 @@ function initAlertsCrud() {
       message: prompt("Alert message:", "New alert") || "New alert",
       severity: prompt("Severity:", "warning") || "warning",
     });
-    setStore(ALERTS_KEY, alerts);
+    writeStore(ALERTS_KEY, alerts);
     renderAllSharedData();
   });
   list.addEventListener("click", (e) => {
@@ -435,13 +973,13 @@ function initAlertsCrud() {
       const alerts = getAlerts();
       const i = Number(t.dataset.edit);
       alerts[i].message = prompt("Edit alert message:", alerts[i].message) || alerts[i].message;
-      setStore(ALERTS_KEY, alerts);
+      writeStore(ALERTS_KEY, alerts);
       renderAllSharedData();
     }
     if (t.dataset.del !== undefined) {
       const alerts = getAlerts();
       alerts.splice(Number(t.dataset.del), 1);
-      setStore(ALERTS_KEY, alerts);
+      writeStore(ALERTS_KEY, alerts);
       renderAllSharedData();
     }
   });
@@ -463,13 +1001,13 @@ function initSettingsSync() {
     if (!form.dataset.bound) {
       form.addEventListener("submit", (event) => {
         event.preventDefault();
-        setStore(PROFILE_KEY, {
+        writeStore(PROFILE_KEY, {
           fullName: document.getElementById("settings-full-name").value.trim(),
           email: document.getElementById("settings-email").value.trim(),
           businessName: document.getElementById("settings-business-name").value.trim(),
           phone: document.getElementById("settings-phone").value.trim(),
         });
-        setStore(PREFERENCES_KEY, {
+        writeStore(PREFERENCES_KEY, {
           ...getPreferences(),
           industry: document.getElementById("settings-industry").value.trim(),
           timezone: document.getElementById("settings-timezone").value.trim(),
@@ -515,8 +1053,71 @@ function renderReportsCards() {
 function renderAllSharedData() {
   renderSharedHeader();
   renderDashboardCards();
+  renderOnboarding();
   renderReportsCards();
   initSettingsSync();
+  initDashboardInteractions();
+}
+
+function initSuppliers() {
+  const form = document.getElementById("supplier-form");
+  const list = document.getElementById("suppliers-list");
+  const count = document.getElementById("suppliers-linked-count");
+  if (!form && !list && !count) return;
+
+  const render = () => {
+    const suppliers = getStore(SUPPLIERS_KEY, defaultSuppliers);
+    if (count) count.textContent = String(suppliers.length);
+    if (list) {
+      list.innerHTML = suppliers
+        .map(
+          (s, i) =>
+            `<div class="item"><div class="row"><strong>${s.name}</strong><span class="pill pill-healthy">linked</span></div><div class="sub">${s.email || "—"}</div><div class="actions-row" style="margin-top:8px"><button class="mini-btn danger" data-del="${i}">✕ Remove</button></div></div>`,
+        )
+        .join("");
+    }
+    renderOnboarding();
+  };
+
+  if (form && form.dataset.bound === "true") {
+    render();
+    return;
+  }
+  if (form) form.dataset.bound = "true";
+
+  form?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = String(document.getElementById("supplier-name")?.value || "").trim();
+    const email = String(document.getElementById("supplier-email")?.value || "").trim();
+    const err = document.getElementById("supplier-name-err");
+    const msg = document.getElementById("supplier-msg");
+    if (!name || name.length < 2) {
+      if (err) err.textContent = "Supplier name is required.";
+      return;
+    }
+    if (err) err.textContent = "";
+    const suppliers = getStore(SUPPLIERS_KEY, defaultSuppliers);
+    suppliers.unshift({ name, email });
+    writeStore(SUPPLIERS_KEY, suppliers);
+    if (msg) msg.textContent = "Supplier linked. Onboarding updated.";
+    form.reset();
+    renderAllSharedData();
+    render();
+  });
+
+  list?.addEventListener("click", (e) => {
+    const t = e.target;
+    if (!(t instanceof HTMLElement)) return;
+    if (t.dataset.del !== undefined) {
+      const suppliers = getStore(SUPPLIERS_KEY, defaultSuppliers);
+      suppliers.splice(Number(t.dataset.del), 1);
+      writeStore(SUPPLIERS_KEY, suppliers);
+      renderAllSharedData();
+      render();
+    }
+  });
+
+  render();
 }
 
 function makeChart(id, config) {
@@ -579,17 +1180,66 @@ function initCharts() {
 let forecastChartInstance = null;
 let forecastComparisonChartInstance = null;
 
+function mergeDemandRowsWithInventory(storedRows) {
+  const products = getProducts();
+  const bySku = new Map(products.map((p) => [p.sku, p]));
+  const existingSkus = new Set(storedRows.map((r) => String(r.product_id || "").trim()).filter(Boolean));
+
+  const merged = storedRows.map((r) => ({
+    ...r,
+    source: r.source || "manual/csv",
+    __isColdStart: false,
+    __product: bySku.get(String(r.product_id || "").trim()) || null,
+  }));
+
+  const today = new Date();
+  const ds = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - 1)).toISOString().slice(0, 10);
+
+  for (const p of products) {
+    if (existingSkus.has(p.sku)) continue;
+    merged.push({
+      id: `cold-${p.sku}`,
+      product_id: p.sku,
+      date: ds,
+      demand: 0,
+      category: p.category || "",
+      created_at: new Date().toISOString(),
+      source: "inventory",
+      __isColdStart: true,
+      __product: p,
+    });
+  }
+
+  return merged.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+}
+
 function renderDemandPreview(rows) {
   const body = document.getElementById("demand-preview-body");
   if (!body) return;
-  body.innerHTML = rows.map((row) => `<tr><td>${row.id}</td><td>${row.product_id}</td><td>${row.date}</td><td>${row.demand}</td><td>${row.category || "-"}</td><td>${new Date(row.created_at).toLocaleString()}</td></tr>`).join("");
-}
+  const products = getProducts();
+  const bySku = new Map(products.map((p) => [p.sku, p]));
 
-function populateProductSelect(rows) {
-  const select = document.getElementById("forecast-product");
-  if (!select) return;
-  const productIds = [...new Set(rows.map((r) => r.product_id))];
-  select.innerHTML = productIds.map((id) => `<option value="${id}">${id}</option>`).join("");
+  body.innerHTML = rows
+    .map((row) => {
+      const sku = String(row.product_id || "");
+      const p = row.__product || bySku.get(sku);
+      const name = p ? p.name : "Unknown product";
+      const source = row.source || (row.__isColdStart ? "inventory" : "manual/csv");
+      const idCell = row.__isColdStart ? `<span class="pill">cold start</span>` : String(row.id);
+      const actions = row.__isColdStart
+        ? `<button class="mini-btn" data-demand-edit="${row.id}">＋ Add data</button>`
+        : `<button class="mini-btn" data-demand-edit="${row.id}">✎ Edit</button><button class="mini-btn danger" data-demand-del="${row.id}">✕ Delete</button>`;
+      return `<tr>
+        <td>${idCell}</td>
+        <td><strong>${sku}</strong></td>
+        <td>${name}</td>
+        <td>${row.date}</td>
+        <td>${row.demand}</td>
+        <td><span class="pill">${source}</span></td>
+        <td class="actions-cell">${actions}</td>
+      </tr>`;
+    })
+    .join("");
 }
 
 function renderForecastChart(historical, predictions) {
@@ -645,10 +1295,10 @@ function renderForecastComparisonChart(historical, predictions) {
 }
 
 function refreshDemandData() {
-  const rows = getDemandRows().slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
-  renderDemandPreview(rows);
-  populateProductSelect(rows);
-  return rows;
+  const stored = getDemandRows().slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const merged = mergeDemandRowsWithInventory(stored);
+  renderDemandPreview(merged);
+  return merged;
 }
 
 function average(list) {
@@ -696,7 +1346,132 @@ function initDemandForecastingPage() {
   const manualForm = document.getElementById("manual-demand-form");
   if (!manualForm) return;
 
+  // Keep product selectors synced with Inventory
+  function populateInventoryProductSelects() {
+    const products = getProducts();
+    const manualSel = document.getElementById("demand-product-id");
+    if (manualSel) {
+      manualSel.innerHTML = products.map((p) => `<option value="${p.sku}">${p.sku} — ${p.name}</option>`).join("");
+    }
+    const forecastSel = document.getElementById("forecast-product");
+    if (forecastSel) {
+      forecastSel.innerHTML = products.map((p) => `<option value="${p.sku}">${p.sku} — ${p.name}</option>`).join("");
+    }
+  }
+  populateInventoryProductSelects();
+
   refreshDemandData();
+
+  if (manualForm.dataset.bound === "true") return;
+  manualForm.dataset.bound = "true";
+
+  // Demand row modal (interactive add/edit)
+  const modalClose = () => closeModal("demand-modal");
+  document.getElementById("demand-modal-close")?.addEventListener("click", modalClose);
+  document.getElementById("demand-modal-cancel")?.addEventListener("click", modalClose);
+
+  let editingDemandId = null;
+
+  function populateDemandModalSku() {
+    const sel = document.getElementById("demand-modal-sku");
+    if (!sel) return;
+    const products = getProducts();
+    sel.innerHTML = products.map((p) => `<option value="${p.sku}">${p.sku} — ${p.name}</option>`).join("");
+  }
+
+  function renderDemandModalContext() {
+    const sku = String(document.getElementById("demand-modal-sku")?.value || "");
+    const p = getProducts().find((x) => x.sku === sku);
+    const ctx = document.getElementById("demand-modal-context");
+    if (!ctx) return;
+    if (!p) ctx.textContent = "—";
+    else ctx.textContent = `Current stock: ${p.stock} • Min: ${p.minStock ?? 10} • Price: ${formatMoney(p.price)}`;
+  }
+
+  document.getElementById("demand-modal-sku")?.addEventListener("change", renderDemandModalContext);
+
+  function openDemandModal({ mode, row }) {
+    populateDemandModalSku();
+    const title = document.getElementById("demand-modal-title");
+    const err = document.getElementById("demand-modal-err");
+    if (err) err.textContent = "";
+    if (title) title.textContent = mode === "edit" ? "Edit Demand Row" : "Add Demand Row";
+    editingDemandId = mode === "edit" ? row?.id : null;
+
+    const sku = row?.product_id || (getProducts()[0]?.sku || "");
+    const date = row?.date || new Date().toISOString().slice(0, 10);
+    const qty = Number(row?.demand ?? 0);
+
+    document.getElementById("demand-modal-sku").value = sku;
+    document.getElementById("demand-modal-date").value = date;
+    document.getElementById("demand-modal-qty").value = String(qty);
+    renderDemandModalContext();
+    openModal("demand-modal");
+  }
+
+  document.getElementById("demand-add-row")?.addEventListener("click", () => openDemandModal({ mode: "add" }));
+
+  document.getElementById("demand-modal-save")?.addEventListener("click", () => {
+    const err = document.getElementById("demand-modal-err");
+    const product_id = String(document.getElementById("demand-modal-sku")?.value || "").trim();
+    const date = normalizeDateString(document.getElementById("demand-modal-date")?.value);
+    const demand = Number(document.getElementById("demand-modal-qty")?.value || 0);
+    if (!product_id || !date || !Number.isFinite(demand) || demand < 0) {
+      if (err) err.textContent = "Provide SKU, date, and a demand quantity ≥ 0.";
+      return;
+    }
+
+    const rows = getDemandRows();
+    if (editingDemandId === null) {
+      rows.push({
+        id: nextDemandId(),
+        product_id,
+        date,
+        demand,
+        category: "",
+        created_at: new Date().toISOString(),
+        source: "manual",
+      });
+    } else {
+      const idx = rows.findIndex((r) => String(r.id) === String(editingDemandId));
+      if (idx === -1) {
+        // editing a cold-start row -> create a real row instead
+        rows.push({
+          id: nextDemandId(),
+          product_id,
+          date,
+          demand,
+          category: "",
+          created_at: new Date().toISOString(),
+          source: "manual",
+        });
+      } else {
+        rows[idx] = { ...rows[idx], product_id, date, demand };
+      }
+    }
+    setDemandRows(rows);
+    refreshDemandData();
+    modalClose();
+  });
+
+  // Preview table edit/delete actions (from merged view)
+  const previewBody = document.getElementById("demand-preview-body");
+  previewBody?.addEventListener("click", (e) => {
+    const t = e.target;
+    if (!(t instanceof HTMLElement)) return;
+    if (t.dataset.demandEdit !== undefined) {
+      const id = String(t.dataset.demandEdit);
+      const merged = refreshDemandData();
+      const row = merged.find((r) => String(r.id) === id);
+      openDemandModal({ mode: "edit", row });
+    }
+    if (t.dataset.demandDel !== undefined) {
+      const id = String(t.dataset.demandDel);
+      const rows = getDemandRows().filter((r) => String(r.id) !== id);
+      setDemandRows(rows);
+      refreshDemandData();
+    }
+  });
 
   manualForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -719,6 +1494,7 @@ function initDemandForecastingPage() {
       demand,
       category,
       created_at: new Date().toISOString(),
+      source: "manual",
     });
     setDemandRows(rows);
     if (msg) msg.textContent = "Demand entry added to preview table.";
@@ -740,7 +1516,8 @@ function initDemandForecastingPage() {
       if (msg) msg.textContent = "No valid rows found. CSV must include: date, product_id, demand.";
       return;
     }
-    const rows = [...getDemandRows(), ...parsedRows];
+    const normalized = parsedRows.map((r) => ({ ...r, source: "csv" }));
+    const rows = [...getDemandRows(), ...normalized];
     setDemandRows(rows);
     if (msg) msg.textContent = `CSV uploaded successfully. Inserted rows: ${parsedRows.length}`;
     refreshDemandData();
@@ -768,6 +1545,9 @@ function initDemandForecastingPage() {
     renderForecastChart(historical, predictions);
     renderForecastValues(predictions);
     renderForecastComparisonChart(historical, predictions);
+
+    const ob = getOnboarding();
+    if (!ob.firstForecastGenerated) setOnboarding({ ...ob, firstForecastGenerated: true });
   });
 }
 
@@ -778,10 +1558,15 @@ if (setupAuth()) {
   initAlertsCrud();
   initCharts();
   initDemandForecastingPage();
+  initSuppliers();
   renderAllSharedData();
   window.addEventListener("storage", (event) => {
-    if ([PRODUCTS_KEY, RESTOCK_KEY, ALERTS_KEY, PROFILE_KEY, PREFERENCES_KEY].includes(event.key)) {
-      window.location.reload();
+    if ([PRODUCTS_KEY, RESTOCK_KEY, ALERTS_KEY, PROFILE_KEY, PREFERENCES_KEY, DEMAND_KEY, SUPPLIERS_KEY, ONBOARDING_KEY].includes(event.key)) {
+      renderAllSharedData();
+      initInventoryCrud();
+      initRestockCrud();
+      initDemandForecastingPage();
+      initSuppliers();
     }
   });
 }

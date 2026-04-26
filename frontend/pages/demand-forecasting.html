@@ -32,7 +32,7 @@
         <div class="card">
           <h3>Manual Data Entry</h3>
           <form id="manual-demand-form" class="form-grid">
-            <input id="demand-product-id" class="input" type="text" placeholder="Product ID" required />
+            <select id="demand-product-id" class="input" required></select>
             <input id="demand-date" class="input" type="date" required />
             <input id="demand-quantity" class="input" type="number" placeholder="Demand Quantity" min="0" required />
             <input id="demand-category" class="input" type="text" placeholder="Category (optional)" />
@@ -43,26 +43,75 @@
 
         <div class="card">
           <h3>CSV Upload</h3>
-          <p class="sub">CSV must include: date, product_id, demand</p>
-          <div class="form-grid">
-            <input id="demand-csv-file" class="input" type="file" accept=".csv" />
-            <button id="upload-csv-btn" class="btn" type="button">Upload CSV</button>
+          <p class="sub">Drag & drop supported. CSV mapping step available in Inventory for products.</p>
+          <div class="dropzone" id="demand-dropzone" tabindex="0">
+            <strong>Drop demand CSV here</strong>
+            <div class="tiny">CSV must include: date, product_id, demand</div>
+            <div class="row">
+              <input id="demand-csv-file" class="input" type="file" accept=".csv" />
+              <button id="upload-csv-btn" class="btn" type="button">Upload CSV</button>
+            </div>
           </div>
           <p id="csv-upload-message" class="sub"></p>
         </div>
       </section>
 
       <section class="card">
-        <h3>Data Preview Table</h3>
+        <div class="row">
+          <div>
+            <h3>Data Preview Table</h3>
+            <p class="sub">Merged view: Manual entries + CSV uploads + Inventory SKUs (cold start rows)</p>
+          </div>
+          <div class="card-actions">
+            <button id="demand-add-row" class="btn btn-dark" type="button">＋ Add row</button>
+          </div>
+        </div>
         <div class="table-wrap">
           <table>
             <thead>
-              <tr><th>ID</th><th>Product ID</th><th>Date</th><th>Demand</th><th>Category</th><th>Created At</th></tr>
+              <tr><th>ID</th><th>SKU</th><th>Product</th><th>Date</th><th>Demand</th><th>Source</th><th>Actions</th></tr>
             </thead>
             <tbody id="demand-preview-body"></tbody>
           </table>
         </div>
       </section>
+
+      <!-- Demand row modal -->
+      <div id="demand-modal" class="modal-backdrop" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="demand-modal-title">
+          <div class="modal-head">
+            <h3 id="demand-modal-title">Add Demand Row</h3>
+            <button class="modal-close" id="demand-modal-close" type="button">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="grid-2">
+              <div class="input-row">
+                <label for="demand-modal-sku">Product (from Inventory)</label>
+                <select id="demand-modal-sku" class="input"></select>
+              </div>
+              <div class="input-row">
+                <label for="demand-modal-date">Date</label>
+                <input id="demand-modal-date" class="input" type="date" />
+              </div>
+            </div>
+            <div class="grid-2">
+              <div class="input-row">
+                <label for="demand-modal-qty">Demand quantity</label>
+                <input id="demand-modal-qty" class="input" type="number" min="0" step="1" placeholder="0" />
+              </div>
+              <div class="input-row">
+                <label>Inventory context</label>
+                <div id="demand-modal-context" class="hint">—</div>
+              </div>
+            </div>
+            <div id="demand-modal-err" class="error"></div>
+          </div>
+          <div class="modal-foot">
+            <button id="demand-modal-cancel" class="btn" type="button">Cancel</button>
+            <button id="demand-modal-save" class="btn btn-dark" type="button">Save</button>
+          </div>
+        </div>
+      </div>
 
       <section class="grid-2">
         <div class="card">

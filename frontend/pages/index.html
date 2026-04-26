@@ -24,11 +24,33 @@
     </aside>
     <main class="content">
       <section class="title"><h2>Dashboard</h2><p>Welcome back! Here's your inventory overview.</p></section>
+      <section class="progress" id="onboarding-card">
+        <div class="progress-top">
+          <div class="progress-title">Smart Onboarding</div>
+          <div class="sub" id="onboarding-caption">0/3 completed</div>
+        </div>
+        <div class="progress-bar"><div id="onboarding-bar"></div></div>
+        <div class="progress-steps">
+          <div class="step" id="step-inventory"><div><strong>1. Inventory Uploaded</strong><div class="hint">Import CSV or add products</div></div><div class="dot"></div></div>
+          <div class="step" id="step-suppliers"><div><strong>2. Suppliers Linked</strong><div class="hint">Add at least one supplier</div></div><div class="dot"></div></div>
+          <div class="step" id="step-forecast"><div><strong>3. First Forecast Generated</strong><div class="hint">Generate a demand forecast</div></div><div class="dot"></div></div>
+        </div>
+      </section>
       <section class="grid-4">
-        <div class="card"><h3>Total Products</h3><div id="dashboard-total-products" class="metric">0</div><div class="sub">Auto-synced from inventory</div></div>
-        <div class="card"><h3>Inventory Value</h3><div id="dashboard-inventory-value" class="metric">$0</div><div class="sub">Based on shared product data</div></div>
-        <div class="card"><h3>Low Stock Items</h3><div id="dashboard-low-stock" class="metric">0</div><div class="sub">Low + critical items</div></div>
-        <div class="card"><h3>Forecast Accuracy</h3><div id="dashboard-forecast-accuracy" class="metric">0%</div><div class="sub">Dynamic status signal</div></div>
+        <div class="card interactive kpi-card" data-card="products" tabindex="0"><h3>Total Products</h3><div id="dashboard-total-products" class="metric">0</div><div class="sub">Auto-synced from inventory</div></div>
+        <div class="card interactive kpi-card" data-card="value" tabindex="0"><h3>Inventory Value</h3><div id="dashboard-inventory-value" class="metric">$0</div><div class="sub">Based on shared product data</div></div>
+        <div class="card interactive kpi-card" data-card="lowstock" tabindex="0"><h3>Low Stock Items</h3><div id="dashboard-low-stock" class="metric">0</div><div class="sub">Low + critical items</div></div>
+        <div class="card interactive kpi-card" data-card="forecast" tabindex="0"><h3>Forecast Accuracy</h3><div id="dashboard-forecast-accuracy" class="metric">0%</div><div class="sub">Dynamic status signal</div></div>
+      </section>
+      <section class="card">
+        <div class="row">
+          <div>
+            <h3>Critical Actions</h3>
+            <p class="sub">Action-first view (not just charts)</p>
+          </div>
+          <a class="btn" href="./inventory.html">Open Inventory</a>
+        </div>
+        <div id="dashboard-critical-actions" class="list"></div>
       </section>
       <section class="grid-2">
         <div class="card"><h3>Sales vs AI Forecast</h3><div class="chart"><canvas id="salesForecastChart"></canvas></div></div>
@@ -36,6 +58,22 @@
       </section>
       <section class="card"><h3>Recent Alerts</h3><div id="dashboard-recent-alerts" class="list"></div></section>
     </main>
+  </div>
+
+  <!-- Dashboard details modal -->
+  <div id="dashboard-modal" class="modal-backdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="dash-modal-title">
+      <div class="modal-head">
+        <h3 id="dash-modal-title">Details</h3>
+        <button class="modal-close" id="dash-modal-close" type="button">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="dash-modal-body" class="list"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="dash-modal-ok" type="button">Close</button>
+      </div>
+    </div>
   </div>
   <script src="../assets/js/app-client.js"></script>
 </body>

@@ -1,3 +1,126 @@
 <!doctype html>
-<html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Restocking</title><link rel="stylesheet" href="../assets/css/styles.css" /></head>
-<body><div class="app"><aside class="sidebar"><div class="brand"><div class="logo">◈</div><div><h1>Inventory Guy</h1><p>Smart Retail</p></div></div><nav class="nav"><a href="./index.html"><span class="icon-mono">▦</span>Dashboard</a><a href="./inventory.html"><span class="icon-mono">▤</span>Inventory</a><a href="./demand-forecasting.html"><span class="icon-mono">◫</span>Demand Forecasting</a><a class="active" href="./restocking.html"><span class="icon-mono">◧</span>Restocking</a><a href="./alerts.html"><span class="icon-mono">◬</span>Alerts</a><a href="./reports.html"><span class="icon-mono">◪</span>Reports</a><a href="./settings.html"><span class="icon-mono">◩</span>Settings</a></nav><div class="user"><strong>Dewmi</strong><button class="btn logout-btn"><span class="icon-mono">◀</span> Logout</button></div></aside><main class="content"><section class="title"><h2>Restocking Recommendations</h2><p>AI-powered inventory replenishment suggestions</p></section><section class="grid-4"><div class="card"><h3>Total Recommendations</h3><div id="restock-total-recommendations" class="metric">0</div></div><div class="card"><h3>Critical Items</h3><div id="restock-critical-items" class="metric">0</div></div><div class="card"><h3>Estimated Total Cost</h3><div id="restock-total-cost" class="metric">$0</div></div><div class="card"><h3>Selected Items Cost</h3><div id="restock-selected-cost" class="metric">$0</div></div></section><section class="card"><div class="row"><h3>Recommended Orders</h3><button id="add-restock-btn" class="btn"><span class="icon-mono">＋</span> Add Order</button></div><table><thead><tr><th>Product</th><th>Current/Min</th><th>Predicted</th><th>Recommended</th><th>Cost</th><th>Actions</th></tr></thead><tbody id="restock-body"></tbody></table></section></main></div><script src="../assets/js/app-client.js"></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Restocking</title>
+  <link rel="stylesheet" href="../assets/css/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><div class="logo">◈</div><div><h1>Inventory Guy</h1><p>Smart Retail</p></div></div>
+      <nav class="nav">
+        <a href="./index.html"><span class="icon-mono">▦</span>Dashboard</a>
+        <a href="./inventory.html"><span class="icon-mono">▤</span>Inventory</a>
+        <a href="./demand-forecasting.html"><span class="icon-mono">◫</span>Demand Forecasting</a>
+        <a class="active" href="./restocking.html"><span class="icon-mono">◧</span>Restocking</a>
+        <a href="./alerts.html"><span class="icon-mono">◬</span>Alerts</a>
+        <a href="./reports.html"><span class="icon-mono">◪</span>Reports</a>
+        <a href="./settings.html"><span class="icon-mono">◩</span>Settings</a>
+      </nav>
+      <div class="user"><strong>Dewmi</strong><button class="btn logout-btn"><span class="icon-mono">◀</span> Logout</button></div>
+    </aside>
+
+    <main class="content">
+      <section class="title">
+        <h2>Restocking</h2>
+        <p>Recommendations and supplier linkage (syncs with Inventory instantly)</p>
+      </section>
+
+      <section class="grid-4">
+        <div class="card"><h3>Total Recommendations</h3><div id="restock-total-recommendations" class="metric">0</div><div class="sub">Auto-synced</div></div>
+        <div class="card"><h3>Critical Items</h3><div id="restock-critical-items" class="metric">0</div><div class="sub"><span class="pill pill-critical">red</span></div></div>
+        <div class="card"><h3>Estimated Total Cost</h3><div id="restock-total-cost" class="metric">$0</div><div class="sub">From recommendations</div></div>
+        <div class="card"><h3>Suppliers Linked</h3><div id="suppliers-linked-count" class="metric">0</div><div class="sub">Onboarding step</div></div>
+      </section>
+
+      <section class="grid-2">
+        <section class="card">
+          <div class="row">
+            <div>
+              <h3>Recommended Orders</h3>
+              <p class="sub">Create a recommendation against a product (dropdown stays synced)</p>
+            </div>
+            <button id="add-restock-btn" class="btn btn-dark"><span class="icon-mono">＋</span> Add</button>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Product</th><th>Current/Min</th><th>Predicted</th><th>Recommended</th><th>Cost</th><th>Actions</th></tr>
+            </thead>
+            <tbody id="restock-body"></tbody>
+          </table>
+        </section>
+
+        <section class="card">
+          <div class="row">
+            <div>
+              <h3>Suppliers</h3>
+              <p class="sub">Link at least one supplier to complete onboarding</p>
+            </div>
+          </div>
+          <form id="supplier-form" class="form-grid">
+            <div class="input-row">
+              <label for="supplier-name">Supplier name</label>
+              <input id="supplier-name" class="input" type="text" placeholder="e.g., TechCorp Inc." />
+              <div id="supplier-name-err" class="error"></div>
+            </div>
+            <div class="input-row">
+              <label for="supplier-email">Email (optional)</label>
+              <input id="supplier-email" class="input" type="email" placeholder="purchasing@vendor.com" />
+            </div>
+            <button class="btn btn-dark" type="submit">Link supplier</button>
+            <div id="supplier-msg" class="sub"></div>
+          </form>
+          <div class="divider"></div>
+          <div id="suppliers-list" class="list"></div>
+        </section>
+      </section>
+
+      <!-- Add restock modal -->
+      <div id="restock-modal" class="modal-backdrop" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="restock-modal-title">
+          <div class="modal-head">
+            <h3 id="restock-modal-title">Add Restock Recommendation</h3>
+            <button class="modal-close" id="restock-modal-close" type="button">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="grid-2">
+              <div class="input-row">
+                <label for="restock-product">Product</label>
+                <select id="restock-product" class="input"></select>
+                <div class="hint">Pulled from Inventory (updates instantly).</div>
+              </div>
+              <div class="input-row">
+                <label for="restock-current-min">Current / Min</label>
+                <input id="restock-current-min" class="input" type="text" placeholder="e.g., 8/10" />
+              </div>
+            </div>
+            <div class="grid-3">
+              <div class="input-row">
+                <label for="restock-predicted">Predicted</label>
+                <input id="restock-predicted" class="input" type="number" min="0" step="1" placeholder="0" />
+              </div>
+              <div class="input-row">
+                <label for="restock-recommended">Recommended</label>
+                <input id="restock-recommended" class="input" type="number" min="0" step="1" placeholder="0" />
+              </div>
+              <div class="input-row">
+                <label for="restock-cost">Cost</label>
+                <input id="restock-cost" class="input" type="number" min="0" step="0.01" placeholder="0.00" />
+              </div>
+            </div>
+            <div id="restock-modal-err" class="error"></div>
+          </div>
+          <div class="modal-foot">
+            <button id="restock-cancel" class="btn" type="button">Cancel</button>
+            <button id="restock-save" class="btn btn-dark" type="button">Save</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="../assets/js/app-client.js"></script>
+</body>
+</html>

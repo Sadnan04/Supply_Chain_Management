@@ -1,3 +1,191 @@
 <!doctype html>
-<html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Inventory</title><link rel="stylesheet" href="../assets/css/styles.css" /></head>
-<body><div class="app"><aside class="sidebar"><div class="brand"><div class="logo">◈</div><div><h1>Inventory Guy</h1><p>Smart Retail</p></div></div><nav class="nav"><a href="./index.html"><span class="icon-mono">▦</span>Dashboard</a><a class="active" href="./inventory.html"><span class="icon-mono">▤</span>Inventory</a><a href="./demand-forecasting.html"><span class="icon-mono">◫</span>Demand Forecasting</a><a href="./restocking.html"><span class="icon-mono">◧</span>Restocking</a><a href="./alerts.html"><span class="icon-mono">◬</span>Alerts</a><a href="./reports.html"><span class="icon-mono">◪</span>Reports</a><a href="./settings.html"><span class="icon-mono">◩</span>Settings</a></nav><div class="user"><strong>Dewmi</strong><button class="btn logout-btn"><span class="icon-mono">◀</span> Logout</button></div></aside><main class="content"><section class="title"><h2>Inventory Management</h2><p>Manage your product stock and details</p></section><section class="grid-4"><div class="card"><h3>Total Products</h3><div id="metric-total-products" class="metric">0/0</div></div><div class="card"><h3>Healthy Stock</h3><div id="metric-healthy-stock" class="metric">0/0</div></div><div class="card"><h3>Low Stock</h3><div id="metric-low-stock" class="metric">0/0</div></div><div class="card"><h3>Critical</h3><div id="metric-critical-stock" class="metric">0/0</div></div></section><section class="card"><div class="row"><h3>Products</h3><button id="add-product-btn" class="btn"><span class="icon-mono">＋</span> Add Product</button></div><table><thead><tr><th>Name</th><th>SKU</th><th>Category</th><th>Stock</th><th>Status</th><th>Actions</th></tr></thead><tbody id="inventory-body"></tbody></table></section></main></div><script src="../assets/js/app-client.js"></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inventory</title>
+  <link rel="stylesheet" href="../assets/css/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><div class="logo">◈</div><div><h1>Inventory Guy</h1><p>Smart Retail</p></div></div>
+      <nav class="nav">
+        <a href="./index.html"><span class="icon-mono">▦</span>Dashboard</a>
+        <a class="active" href="./inventory.html"><span class="icon-mono">▤</span>Inventory</a>
+        <a href="./demand-forecasting.html"><span class="icon-mono">◫</span>Demand Forecasting</a>
+        <a href="./restocking.html"><span class="icon-mono">◧</span>Restocking</a>
+        <a href="./alerts.html"><span class="icon-mono">◬</span>Alerts</a>
+        <a href="./reports.html"><span class="icon-mono">◪</span>Reports</a>
+        <a href="./settings.html"><span class="icon-mono">◩</span>Settings</a>
+      </nav>
+      <div class="user"><strong>Dewmi</strong><button class="btn logout-btn"><span class="icon-mono">◀</span> Logout</button></div>
+    </aside>
+
+    <main class="content">
+      <section class="title">
+        <h2>Inventory Management</h2>
+        <p>Manual entry with inline validation, or drag & drop CSV import with mapping</p>
+      </section>
+
+      <section class="grid-4">
+        <div class="card"><h3>Total Products</h3><div id="metric-total-products" class="metric">0/0</div><div class="sub">Auto-synced</div></div>
+        <div class="card"><h3>Healthy Stock</h3><div id="metric-healthy-stock" class="metric">0/0</div><div class="sub"><span class="pill pill-healthy">green</span></div></div>
+        <div class="card"><h3>Low Stock</h3><div id="metric-low-stock" class="metric">0/0</div><div class="sub"><span class="pill pill-low">amber</span></div></div>
+        <div class="card"><h3>Stockouts/Critical</h3><div id="metric-critical-stock" class="metric">0/0</div><div class="sub"><span class="pill pill-critical">red</span></div></div>
+      </section>
+
+      <section class="grid-2">
+        <section class="card">
+          <div class="row">
+            <div>
+              <h3>Add Product</h3>
+              <p class="sub">Fast manual entry (validates inline)</p>
+            </div>
+            <button id="open-add-product" class="btn btn-dark">＋ New</button>
+          </div>
+          <div class="divider"></div>
+          <div class="dropzone" id="inventory-dropzone" tabindex="0">
+            <strong>Drag & drop a CSV to import inventory</strong>
+            <div class="tiny">You’ll map CSV headers to system fields before importing.</div>
+            <div class="row">
+              <input id="inventory-csv-file" class="input" type="file" accept=".csv" />
+              <button id="inventory-csv-start" class="btn" type="button">Start Import</button>
+            </div>
+            <div id="inventory-csv-msg" class="sub"></div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h3>Status Language</h3>
+          <p class="sub">Clear, color-coded health indicators</p>
+          <div class="list">
+            <div class="row"><strong>Stockout</strong><span class="pill pill-stockout">red</span></div>
+            <div class="row"><strong>Low Stock</strong><span class="pill pill-low">amber</span></div>
+            <div class="row"><strong>Healthy</strong><span class="pill pill-healthy">green</span></div>
+          </div>
+          <div class="divider"></div>
+          <p class="hint">Rules: stock = 0 → stockout; stock &le; min → low; otherwise healthy. (Overstock is tracked but not part of the red/amber/green system.)</p>
+        </section>
+      </section>
+
+      <section class="card">
+        <div class="row">
+          <h3>Products</h3>
+          <div class="row">
+            <button id="export-products-btn" class="btn" type="button">⇩ Export CSV</button>
+          </div>
+        </div>
+        <p class="sub">Updates here immediately propagate to Restocking and Demand Forecasting dropdowns</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th><th>SKU</th><th>Category</th><th>Stock</th><th>Min</th><th>Price</th><th>Status</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="inventory-body"></tbody>
+        </table>
+      </section>
+    </main>
+  </div>
+
+  <!-- Add product modal -->
+  <div id="product-modal" class="modal-backdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="product-modal-title">
+      <div class="modal-head">
+        <h3 id="product-modal-title">Add Product</h3>
+        <button class="modal-close" id="product-modal-close" type="button">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="product-form" class="form-grid">
+          <div class="grid-2">
+            <div class="input-row">
+              <label for="p-name">Product name</label>
+              <input id="p-name" class="input" type="text" placeholder="e.g., Wireless Headphones" autocomplete="off" />
+              <div id="p-name-err" class="error"></div>
+            </div>
+            <div class="input-row">
+              <label for="p-sku">SKU / Product ID</label>
+              <input id="p-sku" class="input" type="text" placeholder="e.g., WH-001" autocomplete="off" />
+              <div id="p-sku-err" class="error"></div>
+            </div>
+          </div>
+
+          <div class="grid-3">
+            <div class="input-row">
+              <label for="p-category">Category</label>
+              <input id="p-category" class="input" type="text" placeholder="e.g., Electronics" />
+            </div>
+            <div class="input-row">
+              <label for="p-stock">Stock</label>
+              <input id="p-stock" class="input" type="number" min="0" step="1" placeholder="0" />
+              <div id="p-stock-err" class="error"></div>
+            </div>
+            <div class="input-row">
+              <label for="p-min">Min stock</label>
+              <input id="p-min" class="input" type="number" min="0" step="1" placeholder="10" />
+              <div id="p-min-err" class="error"></div>
+            </div>
+          </div>
+
+          <div class="grid-3">
+            <div class="input-row">
+              <label for="p-price">Unit price</label>
+              <input id="p-price" class="input" type="number" min="0" step="0.01" placeholder="0.00" />
+            </div>
+            <div class="input-row">
+              <label>Status preview</label>
+              <div id="p-status-preview" class="pill">-</div>
+            </div>
+            <div class="input-row">
+              <label> </label>
+              <div class="hint">Saved changes sync instantly across tabs/pages.</div>
+            </div>
+          </div>
+
+          <div id="product-form-msg" class="sub"></div>
+        </form>
+      </div>
+      <div class="modal-foot">
+        <button id="product-cancel" class="btn" type="button">Cancel</button>
+        <button id="product-save" class="btn btn-dark" type="button">Save product</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CSV mapping modal -->
+  <div id="mapping-modal" class="modal-backdrop" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mapping-title">
+      <div class="modal-head">
+        <h3 id="mapping-title">Map CSV columns</h3>
+        <button class="modal-close" id="mapping-close" type="button">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="mapping-grid">
+          <div>
+            <p class="sub">Pick which CSV headers map to system fields (required: name, sku, stock).</p>
+            <div id="mapping-list" class="map-list"></div>
+            <div id="mapping-err" class="error"></div>
+          </div>
+          <div>
+            <h3>Preview (first 5 rows)</h3>
+            <div class="table-wrap">
+              <table>
+                <thead id="mapping-preview-head"></thead>
+                <tbody id="mapping-preview-body"></tbody>
+              </table>
+            </div>
+            <div class="hint">Tip: if your CSV uses “product_id”, map it to SKU.</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button id="mapping-cancel" class="btn" type="button">Cancel</button>
+        <button id="mapping-import" class="btn btn-dark" type="button">Import products</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../assets/js/app-client.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "supply-chain-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "worker": "node worker.js"
+  },
+  "dependencies": {
+    "mysql2": "^3.12.0"
+  }
+}
+
