@@ -7,6 +7,21 @@ CREATE DATABASE IF NOT EXISTS supply_chain_ai
 
 USE supply_chain_ai;
 
+-- Application users for backend-validated authentication
+CREATE TABLE IF NOT EXISTS users (
+  user_id          BIGINT NOT NULL AUTO_INCREMENT,
+  full_name        VARCHAR(255) NOT NULL,
+  email            VARCHAR(255) NOT NULL,
+  password_hash    VARCHAR(255) NOT NULL,
+  role             ENUM('admin','manager','viewer') NOT NULL DEFAULT 'admin',
+  is_active        TINYINT(1) NOT NULL DEFAULT 1,
+  last_login_at    DATETIME NULL,
+  created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id),
+  UNIQUE KEY uq_users_email (email)
+) ENGINE=InnoDB;
+
 -- Core catalog
 CREATE TABLE IF NOT EXISTS products (
   product_id        VARCHAR(64)  NOT NULL,

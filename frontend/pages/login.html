@@ -14,10 +14,11 @@
         <p class="sub">Sign in to continue</p>
       </div>
       <form id="login-form" class="list">
-        <label class="col"><span>Email</span><input class="input" type="email" /></label>
-        <label class="col"><span>Password</span><input class="input" type="password" /></label>
+        <label class="col"><span>Email</span><input id="login-email" class="input" type="email" required /></label>
+        <label class="col"><span>Password</span><input id="login-password" class="input" type="password" required /></label>
+        <p id="login-error" class="error"></p>
         <button class="btn btn-dark" type="submit">Login</button>
-        <div class="login-credentials"><strong>Login credentials</strong><span>Email: admin@inventoryguy.com</span><span>Password: password123</span></div>
+        <div class="login-credentials"><strong>Default admin (seeded by backend)</strong><span>Email: admin@inventoryguy.com</span><span>Password: password123</span></div>
       </form>
     </div>
   </div>

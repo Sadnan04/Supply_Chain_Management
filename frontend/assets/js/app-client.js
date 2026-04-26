@@ -237,17 +237,73 @@ function forceLogout() {
 
 function setupAuth() {
   const page = window.location.pathname.split("/").pop() || "index.html";
-  if (page !== "login.html" && localStorage.getItem(AUTH_KEY) !== "true") {
+  const hasSessionAuth = sessionStorage.getItem(AUTH_KEY) === "true";
+
+  // Only an active session is allowed to access protected pages.
+  // This blocks direct URL access when credentials were not submitted in this session.
+  if (page !== "login.html" && !hasSessionAuth) {
+    localStorage.removeItem(AUTH_KEY);
     window.location.replace("./login.html");
     return false;
   }
   if (page === "login.html") {
+    // Always require a fresh credential check on login page load.
+    // This prevents stale auth values from bypassing login validation.
+    localStorage.removeItem(AUTH_KEY);
+    sessionStorage.removeItem(AUTH_KEY);
+
     const form = document.getElementById("login-form");
     if (!form) return false;
-    form.addEventListener("submit", (event) => {
+    if (form.dataset.bound === "true") return false;
+    form.dataset.bound = "true";
+
+    form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      localStorage.setItem(AUTH_KEY, "true");
-      window.location.replace("./index.html");
+      const emailInput =
+        document.getElementById("login-email") ||
+        form.querySelector('input[type="email"]');
+      const passwordInput =
+        document.getElementById("login-password") ||
+        form.querySelector('input[type="password"]');
+
+      const email = String(emailInput?.value || "").trim().toLowerCase();
+      const password = String(passwordInput?.value || "");
+      const errorEl = document.getElementById("login-error");
+      if (!email || !password) {
+        localStorage.removeItem(AUTH_KEY);
+        sessionStorage.removeItem(AUTH_KEY);
+        if (errorEl) errorEl.textContent = "Email and password are required.";
+        alert("Email and password are required.");
+        return;
+      }
+
+      try {
+        const resp = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+        const data = await resp.json().catch(() => ({}));
+
+        if (!resp.ok || !data.ok) {
+          localStorage.removeItem(AUTH_KEY);
+          sessionStorage.removeItem(AUTH_KEY);
+          const msg = data?.error || "Invalid email or password. Please try again.";
+          if (errorEl) errorEl.textContent = msg;
+          alert(msg);
+          return;
+        }
+
+        localStorage.setItem(AUTH_KEY, "true");
+        sessionStorage.setItem(AUTH_KEY, "true");
+        if (errorEl) errorEl.textContent = "";
+        window.location.replace("./index.html");
+      } catch {
+        localStorage.removeItem(AUTH_KEY);
+        sessionStorage.removeItem(AUTH_KEY);
+        if (errorEl) errorEl.textContent = "Unable to reach auth server.";
+        alert("Unable to reach auth server. Please try again.");
+      }
     });
     return false;
   }

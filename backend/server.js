@@ -1,11 +1,14 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const bcrypt = require("bcryptjs");
 const { query, withTx } = require("./db");
 
 const PORT = process.env.PORT || 3000;
 const ROOT = path.resolve(__dirname, "..");
 const FRONTEND = path.join(ROOT, "frontend");
+const DEFAULT_ADMIN_EMAIL = String(process.env.DEFAULT_ADMIN_EMAIL || "admin@inventoryguy.com").toLowerCase();
+const DEFAULT_ADMIN_PASSWORD = String(process.env.DEFAULT_ADMIN_PASSWORD || "password123");
 
 const mime = {
   ".html": "text/html; charset=utf-8",
@@ -42,6 +45,21 @@ function readJsonBody(req) {
     });
     req.on("error", reject);
   });
+}
+
+async function ensureDefaultAdminUser() {
+  const existing = await query(
+    `SELECT user_id FROM users WHERE email = :email LIMIT 1`,
+    { email: DEFAULT_ADMIN_EMAIL },
+  );
+  if (existing.length) return;
+  const hash = await bcrypt.hash(DEFAULT_ADMIN_PASSWORD, 12);
+  await query(
+    `INSERT INTO users (full_name, email, password_hash, role, is_active)
+     VALUES ('System Admin', :email, :hash, 'admin', 1)`,
+    { email: DEFAULT_ADMIN_EMAIL, hash },
+  );
+  console.log(`[auth] seeded default admin user: ${DEFAULT_ADMIN_EMAIL}`);
 }
 
 function csvSplitLine(line) {
@@ -328,6 +346,52 @@ const server = http.createServer(async (req, res) => {
 
   if (urlPath === "/api/health") return sendJson(res, 200, { ok: true });
 
+  // Backend-validated login (credentials stored as password hash in DB)
+  if (req.method === "POST" && urlPath === "/api/auth/login") {
+    try {
+      const body = await readJsonBody(req);
+      const email = String(body.email || "").trim().toLowerCase();
+      const password = String(body.password || "");
+      if (!email || !password) {
+        return sendJson(res, 400, { ok: false, error: "Email and password are required" });
+      }
+
+      const users = await query(
+        `SELECT user_id, full_name, email, password_hash, role, is_active
+         FROM users
+         WHERE email = :email
+         LIMIT 1`,
+        { email },
+      );
+      const user = users[0];
+      if (!user || Number(user.is_active) !== 1) {
+        return sendJson(res, 401, { ok: false, error: "Invalid email or password" });
+      }
+
+      const passOk = await bcrypt.compare(password, String(user.password_hash || ""));
+      if (!passOk) {
+        return sendJson(res, 401, { ok: false, error: "Invalid email or password" });
+      }
+
+      await query(
+        `UPDATE users SET last_login_at = UTC_TIMESTAMP() WHERE user_id = :id`,
+        { id: user.user_id },
+      );
+
+      return sendJson(res, 200, {
+        ok: true,
+        user: {
+          user_id: user.user_id,
+          full_name: user.full_name,
+          email: user.email,
+          role: user.role,
+        },
+      });
+    } catch (e) {
+      return sendJson(res, 500, { ok: false, error: e.message });
+    }
+  }
+
   // Products (read)
   if (req.method === "GET" && urlPath === "/api/products") {
     const rows = await query(
@@ -609,4 +673,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
+  ensureDefaultAdminUser().catch((e) => {
+    console.error("[auth] failed to seed default admin user", e.message);
+  });
 });

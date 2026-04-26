@@ -31,6 +31,21 @@ Start API + static frontend server:
 npm run start
 ```
 
+### Backend-validated login (DB-managed credentials)
+
+The login page now calls backend API:
+- `POST /api/auth/login` with `{ email, password }`
+
+Credentials are validated against `users` table using bcrypt hash verification.
+
+On first backend boot, a default admin user is auto-seeded if not present:
+- email: `admin@inventoryguy.com`
+- password: `password123`
+
+You can override seed credentials via env:
+- `DEFAULT_ADMIN_EMAIL`
+- `DEFAULT_ADMIN_PASSWORD`
+
 ### 3) System logic (Ripple Effects)
 
 #### Manual Sale → stock decrement + anomaly detection
