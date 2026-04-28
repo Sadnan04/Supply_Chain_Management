@@ -1,4 +1,6 @@
 const AUTH_KEY = "inventory_auth";
+const STATIC_ADMIN_EMAIL = "admin@retailguy.com";
+const STATIC_ADMIN_PASSWORD = "password123";
 const PRODUCTS_KEY = "inventory_products";
 const RESTOCK_KEY = "inventory_restock";
 const ALERTS_KEY = "inventory_alerts";
@@ -278,17 +280,13 @@ function setupAuth() {
       }
 
       try {
-        const resp = await fetch("/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        });
-        const data = await resp.json().catch(() => ({}));
-
-        if (!resp.ok || !data.ok) {
+        // Static credential mode: allow login without backend/API dependency.
+        const isStaticAdmin =
+          email === STATIC_ADMIN_EMAIL && password === STATIC_ADMIN_PASSWORD;
+        if (!isStaticAdmin) {
           localStorage.removeItem(AUTH_KEY);
           sessionStorage.removeItem(AUTH_KEY);
-          const msg = data?.error || "Invalid email or password. Please try again.";
+          const msg = "Invalid email or password. Please try again.";
           if (errorEl) errorEl.textContent = msg;
           alert(msg);
           return;
